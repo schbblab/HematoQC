@@ -233,7 +233,6 @@
         <button class="tab" data-tab="list"></button>
         <button class="tab" data-tab="settings"></button>
       </nav>
-      <div id="mode-badge" class="order-2 sm:order-3"></div>
     </div>
   </header>
 
@@ -295,13 +294,17 @@ const ICONS = {
 };
 const ic = (n, s=18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 
+/* การเชื่อมต่อ Apps Script Web App (เชื่อมอัตโนมัติ ไม่แสดงในหน้าจอ) */
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbwB91prXQN1fwkKwaaR23liaiayVbS87k4mkTxDG-jcPROJLemISnzOtWsCHGdu-s8/exec';
+const DEFAULT_API_KEY = ''; // ถ้าตั้ง ACCESS_KEY ใน Script properties ให้ใส่รหัสเดียวกันที่นี่
+
 /* =====================================================================
    State
 ===================================================================== */
 const state = {
   tab:'dash', loading:true, busy:false,
-  apiUrl: localStorage.getItem('hemaqc_api_url') || '',
-  apiKey: localStorage.getItem('hemaqc_api_key') || '',
+  apiUrl: DEFAULT_API_URL,
+  apiKey: DEFAULT_API_KEY,
   cfg:{...DEFAULTS.cfg}, lots:[...DEFAULTS.lots], tea:[...DEFAULTS.tea], records:[],
   selDate: todayStr(), fromDate:'', lotFilter:'ALL', listFrom:'', listTo:'', teaSrc:'CLIA',
   chart:{ param:'WBC', level:1 }, editingId:null, q:'',
@@ -406,7 +409,7 @@ async function loadAll({ first=false } = {}){
     });
   } catch (err){
     state.records = [];
-    Modal.fire({ icon:'error', title:'โหลดข้อมูลไม่สำเร็จ', html:`<div class="swal-left">${esc(err.message)}<br><br>ตรวจสอบ URL ของ Apps Script และสิทธิ์การเข้าถึง (Anyone) ในหน้า “ตั้งค่า”</div>` });
+    Modal.fire({ icon:'error', title:'เชื่อมต่อฐานข้อมูลไม่สำเร็จ', text:'กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง', showCancelButton:true, confirmButtonText:'ลองใหม่', cancelButtonText:'ปิด' }).then(r => { if (r.isConfirmed) loadAll(); });
   } finally {
     state.loading = false; render();
   }
@@ -457,8 +460,6 @@ function setChrome(){
     if (!b.dataset.ready){ b.innerHTML = `${ic(i,17)}<span>${t}</span>`; b.dataset.ready = 1; }
     b.classList.toggle('tab-active', b.dataset.tab === state.tab);
   });
-  const sheets = !!state.apiUrl;
-  $('#mode-badge').innerHTML = `<span class="badge ${sheets?'badge-ok':'badge-warn'}" style="padding:.35rem .8rem;font-size:.75rem"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${sheets?'Google Sheets':'โหมดทดลอง (Local)'}</span>`;
   $('#hdr-sub').textContent = `${state.cfg.instrument || 'Hematology'} · ค่า QC สะสม`;
 }
 function render(){
@@ -882,7 +883,6 @@ function bindList(){
 /* ---------- Settings ---------- */
 function renderSettings(){
   const lots = [1,2,3].map(l => state.lots.find(x => x.level === l) || { level:l, lot_no:'', expiry_date:'' });
-  const sheets = !!state.apiUrl;
   return `
   <section class="glass p-4 sm:p-6">
     <h1 class="text-xl font-semibold mb-4">เครื่องมือและ Control</h1>
@@ -911,21 +911,7 @@ function renderSettings(){
     <div class="mt-5 flex justify-end"><button class="btn btn-primary btn-shimmer" id="s-save">${ic('check')}<span>บันทึกการตั้งค่า</span></button></div>
   </section>
 
-  <section class="glass p-4 sm:p-6">
-    <div class="flex flex-wrap items-center gap-3 mb-4">
-      <h2 class="text-lg font-semibold mr-auto">การเชื่อมต่อ Google Sheets</h2>
-      <button class="btn" id="c-help">${ic('link',16)}<span>วิธีเชื่อมต่อ</span></button>
-    </div>
-    <div class="grid sm:grid-cols-[2fr_1fr] gap-4">
-      <div><label class="lbl" for="c-url">Web App URL (Apps Script)</label><input id="c-url" class="field w-full" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(state.apiUrl)}"></div>
-      <div><label class="lbl" for="c-key">Access key (ถ้ามี)</label><input id="c-key" type="password" class="field w-full" value="${esc(state.apiKey)}" autocomplete="off"></div>
-    </div>
-    <div class="mt-4 flex flex-wrap gap-3 justify-end">
-      ${!sheets ? `<button class="btn btn-rose" id="c-clear">ล้างข้อมูลทดลอง</button>` : `<button class="btn btn-rose" id="c-off">ตัดการเชื่อมต่อ</button>`}
-      <button class="btn" id="c-test">ทดสอบ</button>
-      <button class="btn btn-mint" id="c-save">บันทึกและเชื่อมต่อ</button>
-    </div>
-  </section>`;
+`;
 }
 
 function bindSettings(){
@@ -941,34 +927,6 @@ function bindSettings(){
       Object.assign(state, { cfg, lots, tea, teaSrc:cfg.tea_source });
       Toast.fire({ icon:'success', title:'บันทึกการตั้งค่าแล้ว' }); renderKeep();
     } catch (err){ btnLoading(btn, false); Modal.fire({ icon:'error', title:'บันทึกไม่สำเร็จ', text:err.message }); }
-  };
-  $('#c-help').onclick = () => Modal.fire({ title:'เชื่อมต่อ Google Sheets', width:620, confirmButtonText:'เข้าใจแล้ว', html:`<div class="swal-left"><ol>
-    <li>สร้าง Google Sheet ใหม่ → เมนู <b>Extensions › Apps Script</b></li>
-    <li>วางโค้ดจากไฟล์ <code>Code.gs</code> แล้วกด Run ที่ฟังก์ชัน <code>setupDatabase</code> (อนุญาตสิทธิ์ครั้งแรก)</li>
-    <li>กด <b>Deploy › New deployment › Web app</b> → Execute as: <b>Me</b> · Who has access: <b>Anyone</b></li>
-    <li>คัดลอก Web App URL มาวางในช่องนี้ แล้วกด “บันทึกและเชื่อมต่อ”</li>
-    <li>(ทางเลือก) ตั้ง <code>ACCESS_KEY</code> ที่ Project Settings › Script properties แล้วกรอกค่าเดียวกันในช่อง Access key</li></ol></div>` });
-  $('#c-test').onclick = async () => {
-    const url = $('#c-url').value.trim(), key = $('#c-key').value;
-    if (!url) return Toast.fire({ icon:'info', title:'ยังไม่ได้ใส่ URL', text:'ตอนนี้ใช้โหมดทดลอง (Local)' });
-    const old = [state.apiUrl, state.apiKey]; state.apiUrl = url; state.apiKey = key;
-    try { await busy('กำลังทดสอบการเชื่อมต่อ…', () => api.call('ping')); Toast.fire({ icon:'success', title:'เชื่อมต่อสำเร็จ' }); }
-    catch (err){ Modal.fire({ icon:'error', title:'เชื่อมต่อไม่สำเร็จ', text:err.message }); }
-    finally { [state.apiUrl, state.apiKey] = old; }
-  };
-  $('#c-save').onclick = async () => {
-    const url = $('#c-url').value.trim();
-    if (url && !/^https:\/\/script\.google\.com\/.+\/exec/.test(url)) return Modal.fire({ icon:'warning', title:'URL ไม่ถูกต้อง', text:'ต้องขึ้นต้นด้วย https://script.google.com/ และลงท้ายด้วย /exec' });
-    state.apiUrl = url; state.apiKey = $('#c-key').value;
-    localStorage.setItem('hemaqc_api_url', state.apiUrl); localStorage.setItem('hemaqc_api_key', state.apiKey);
-    await Toast.fire({ icon:'success', title: url ? 'ตั้งค่าการเชื่อมต่อแล้ว' : 'กลับสู่โหมดทดลอง', timer:1500 });
-    state.tab = 'dash'; loadAll();
-  };
-  if ($('#c-off')) $('#c-off').onclick = () => { $('#c-url').value = ''; $('#c-save').click(); };
-  if ($('#c-clear')) $('#c-clear').onclick = async () => {
-    const r = await Modal.fire({ icon:'warning', title:'ล้างข้อมูลทดลองทั้งหมด?', text:'ข้อมูลที่เก็บในเบราว์เซอร์นี้จะถูกลบถาวร', showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#fb7185' });
-    if (!r.isConfirmed) return;
-    await busy('กำลังล้างข้อมูล…', () => api.call('clearAll')); state.tab = 'dash'; loadAll();
   };
 }
 
